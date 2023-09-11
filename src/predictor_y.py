@@ -16,7 +16,8 @@ class Classifier(LightningModule):
         Gender predictor for the UCI Adult datatset
 
         params:
-            ema_param: float. Exponential Moving Average (EMA) param for updating teachers weights. Default = 0.3
+            use_robust: boolean. Use DRO loss if true.
+            robust_method: enum. values `chi-square` or `cvar`
             input_size: int. Input size. Default = 97
             output_size: int. Output size. Default = 1
     """
@@ -24,19 +25,13 @@ class Classifier(LightningModule):
     def __init__(self, input_size=97, output_size=1, lr=.001, betas=None, use_robust=False, robust_method='chi-square') -> None:
         super(Classifier, self).__init__()
 
-        self.model = nn.Linear(input_size, output_size) 
-        #nn.Sequential(
-        #    nn.Linear(input_size, output_size), 
-            #nn.Linear(64, 32), 
-            #nn.Linear(32, output_size), 
-        #)
-
- 
+        self.model = nn.Linear(input_size, output_size)   
 
         self.lr = lr
         self.robust_loss = RobustLoss(geometry=robust_method, size=1 if robust_method=='chi-square' else .9, reg=0.01)
-        self.loss = nn.BCEWithLogitsLoss() #reduction='none' if use_robust else 'mean'
+        self.loss = nn.BCEWithLogitsLoss() 
 
+        # metrics to logged 
         self.train_acc = Accuracy(task="binary", multiclass=False)
         self.val_acc = Accuracy(task="binary", multiclass=False)
         self.test_acc = Accuracy(task="binary", multiclass=False) 
@@ -70,11 +65,8 @@ class Classifier(LightningModule):
 
     def training_step(self, batch, _): 
         x, y, s = batch
-        # x, y, s = x.squeeze(), y.squeeze(), s.squeeze()
-        # print(x.shape, s)
+         
         output, sigmoid_output = self(x)
-
-        #
 
         loss = self.loss_fn(output, y)
 
@@ -91,7 +83,7 @@ class Classifier(LightningModule):
         return loss
 
     def validation_step(self, batch, _):
-        #return
+        
         x, y, s = batch
 
         # print(s)
@@ -102,11 +94,6 @@ class Classifier(LightningModule):
         self.val_acc.update(sigmoid_output, y.long())
 
         self.dp.update(sigmoid_output, s)
-
-        #self.eo_test.update(sigmoid_output, y, s)
-        #self.eod_test.update(sigmoid_output, y, s)
-        #self.log("eo/val", self.eo_test)
-        #self.log("eod/val", self.eod_test)
 
         self.log("acc/val", self.val_acc, prog_bar=True)
         self.log("loss/val", loss, prog_bar=False)

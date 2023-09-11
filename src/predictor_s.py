@@ -38,6 +38,15 @@ class GaussianWarmpUp:
 
 
 class TeacherModel(nn.Module):
+    """
+        Teacher model, used to for uncertainty estimation.
+
+        params:
+            model: nn.Module. the student model.
+            ema_param: float. Exponential Moving Average (EMA) param for updating teachers weights. Default = 0.99
+            mc_iteration: int. Number of MC iteration (dropout sub-models). Default = 8.
+            H: real. The uncertainty threshold.
+    """
     def __init__(self, model, ema_param, mc_iteration=8, H=.3) -> None:
         super(TeacherModel, self).__init__()
         self.model = copy.deepcopy(model)
@@ -48,8 +57,8 @@ class TeacherModel(nn.Module):
 
     def ema_update(self, new_params) -> None:
         # update teacher's paramaters with EMA
-        for current_params, ema_params in zip(new_params, self.model.parameters()):
-            # print(param1.shape, param2.shape)
+        for current_params, ema_params in zip(new_params, self.model.parameters()): 
+
             ema_params.data = self.ema_param * current_params + \
                 (1 - self.ema_param) * ema_params
         pass
@@ -88,8 +97,7 @@ class TeacherModel(nn.Module):
                 highly_certain_idx.append(i)
             entpy.append(e)
 
-        # return the average uncertainty and the percentange highly confident samples thresholded by H
-        # return torch.mean(torch.tensor(entpy)), highly_certain_idx
+        # return the average uncertainty and the percentage highly confident samples thresholded by H
         return entpy, highly_certain_idx
 
     def predict_step(self, batch: tuple, batch_idx: int, dataloader_idx: int = 0):
@@ -106,14 +114,17 @@ class TeacherModel(nn.Module):
 
 class DemographicPredictor(LightningModule):
     """ 
+        Train attribute classifier with uncertainty awareness
         params:
-            ema_param: float. Exponential Moving Average (EMA) param for updating teachers weights. Default = 0.3
+            ema_param: float. Exponential Moving Average (EMA) param for updating teachers weights. Default = 0.99
             input_size: int. Input size. Default = 97
-            output_size: int. Output size. Default = 1
-            data1: DataLoader. DataLoader of the dataset without sensitive informations
+            output_size: int. Output size. Default = 1 
+            consistency_w: bool. Uses consistency loss if True. 
+            labelled_bs: int. offset of the labelled data in the mini-batch
+            treshold_uncert: real. Uncertainty threshold for the teacher model. 
     """
 
-    def __init__(self, input_size=97, output_size=1, lr=.001, ema_param=.99, betas=None, labelled_bs=64, consistency_w=.3, treshold_uncert=.3, total_epoch=50) -> None:
+    def __init__(self, input_size=97, output_size=1, lr=.001, ema_param=.99, betas=None, labelled_bs=64, consistency_w=True, treshold_uncert=.3, total_epoch=50) -> None:
         super(DemographicPredictor, self).__init__()
 
         self.student = nn.Sequential(
@@ -181,15 +192,12 @@ class DemographicPredictor(LightningModule):
                                      :], x[self.labelled_bs:, :]
 
         s_labelled, s_unlabelled = s[:self.labelled_bs], s[self.labelled_bs:]
-
-        # print(s_labelled, s_unlabelled)
+ 
 
         output = self(x_labelled)
 
         loss = self.loss(output, s_labelled)
-
-        # print("labeleled>", s_labelled)
-        # print("unlabeleled>", s_unlabelled)
+ 
 
         self.train_acc.update(output, s_labelled.long())
 
@@ -239,14 +247,12 @@ class DemographicPredictor(LightningModule):
         return w
 
     def update_treshold(self):
-        t = self.current_epoch
-        # print(">>>", self.current_epoch)
+        t = self.current_epoch 
         u_max = torch.log10(torch.tensor(2))
         trhl = (3/4)*u_max * torch.exp(torch.tensor(-5 * (1 - (t/u_max))))
         self.log("loss/u_treshold", trhl,
                  prog_bar=False, on_epoch=True, on_step=False)
-
-        # self.treshold_uncert = trhl
+ 
         return trhl
 
     def on_train_epoch_start(self):
@@ -290,8 +296,7 @@ class DemographicPredictor(LightningModule):
 
         self.test_acc.update(output, s.long())
 
-        self.log("acc/test", self.test_acc, on_epoch=True)
-        # self.log("test/loss", loss)
+        self.log("acc/test", self.test_acc, on_epoch=True) 
 
     def training_step_end(self, step_output):
         self.teacher.ema_update(self.parameters())
