@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 import torch
 from torch import nn
 import numpy as np
-from datasets import get_old_adult, get_adult, get_compas_race, get_acs_employment
+from datasets import get_datasets_tp
 
 from predictor_s import DemographicPredictor
 from knn_imputer import knn_impute
@@ -81,12 +81,7 @@ epsilons = [0.0, 1.0]
 
 basemodel_map = get_base_models(arg.dataset, arg.seed)
 
-datasets = {
-    'adult': get_old_adult,
-    'new_adult': get_adult,
-    'acs_employment': get_acs_employment, 
-    'compas_race': get_compas_race
-}
+datasets = get_datasets_tp()
 
 
 def get_base_model(name, sample_w):
@@ -120,32 +115,36 @@ class NN(nn.Module):
 
     def forward(self, x):
         x = self.network(x)
-        return x
+        return x 
 
 
 def get_predicted_sensitive_attribute(X, y, return_Reliable_S=False): 
     X = torch.from_numpy(X).float()
     y = torch.from_numpy(y).float()
+    input_size = X.shape[1]
 
     if arg.dataset == 'new_adult':
         pretrained_path = './pretrained/new_adult_consistency_loss2.ckpt'
         input_size = 52
         # add the target in the input to predict the sensitive attrbutes
         X = torch.hstack([X, y.float().unsqueeze(1)])
-        treshold_uncert = 0.6
-    elif arg.dataset == 'acs_employment':
-        pretrained_path = './pretrained/acs_employment.ckpt'
-        input_size = 51
-        # add the target in the input to predict the sensitive attrbutes
-        X = torch.hstack([X, y.float().unsqueeze(1)])
-        treshold_uncert = 0.6
+        treshold_uncert = 0.6 
     elif arg.dataset == "compas":
         pretrained_path = './pretrained/compas_gender.ckpt'
-        input_size = X.shape[1]
+        #input_size = X.shape[1]
         treshold_uncert = 0.6
     elif arg.dataset == "compas_race":
         pretrained_path = './pretrained/compas_race.ckpt'
-        input_size = X.shape[1]
+        #input_size = X.shape[1]
+        treshold_uncert = 0.6
+    elif arg.dataset == "lsac":
+        pretrained_path = './pretrained/lsac_race_c.ckpt' 
+        treshold_uncert = 0.06#0.01106266
+    elif arg.dataset == "lsac_sex":
+        pretrained_path = './pretrained/lsac_sex.ckpt' 
+        treshold_uncert = 0.66
+    elif arg.dataset == "celeba":
+        pretrained_path = './pretrained/celebA.ckpt' 
         treshold_uncert = 0.6
     else: 
         pretrained_path = './pretrained/adult_pretrained_demographic.ckpt'
@@ -162,7 +161,7 @@ def get_predicted_sensitive_attribute(X, y, return_Reliable_S=False):
             entropies, idx = demographic_predictor.teacher.entropy_estimation(
                 (X, None, None))
  
-            return s_pred, idx, np.array(entropies)
+            return s_pred.long().detach().numpy(), idx, np.array(entropies)
     return s_pred.detach().numpy()
 
 
@@ -176,11 +175,13 @@ X_train, X_test, y_train, y_test, s_train, s_test = train_test_split(
 sample_weights = None
 
 if arg.sensitive_feature_type == 'ours': 
-    s_pred, idx, _ = get_predicted_sensitive_attribute(
+    s_pred, idx, uncert = get_predicted_sensitive_attribute(
         X_train, y_train, return_Reliable_S=True)
+    print(s_train, s_pred)
     s_train = s_pred[idx]
     X_train = X_train[idx, :]
-    y_train = y_train[idx] 
+    y_train = y_train[idx]  
+    print("///////////////////// Proportion of certain samples = {}, avg_uncertainty ={} +- {} \n {}".format(len(s_train)/len(s_pred)*100, np.mean(uncert), np.std(uncert), uncert ))
 elif arg.sensitive_feature_type == 'predicted':
     # s_train is assumed nan in this case
 
@@ -194,6 +195,10 @@ elif arg.sensitive_feature_type == 'predicted':
 
     print("///////////////////// Accuracy predicted target = ", accuracy_score(
         s_train, s_pred))
+    #print(len(s_pred == s_train))
+    #print(len(s_pred[s_pred != 1])/len(s_pred))
+    #print(s_train[s_train==0])
+    #exit(2)
     s_train = s_pred
 
 
@@ -201,8 +206,8 @@ def fit(epsilon, fairness, base_model, is_adv_devaising=True):
 
     if is_adv_devaising:
         adv_input_size = 2 if fairness == 'eodds' else 1
-        mitigator = AdversarialFairnessClassifier(constraints=fair_metrics_name_map[fairness], predictor_model=NN(
-            input_size=X_train.shape[1]), adversary_model=NN(input_size=adv_input_size), epochs=50, alpha=epsilon)
+        mitigator = AdversarialFairnessClassifier(constraints=fair_metrics_name_map[fairness], backend="torch", predictor_model=[X_train.shape[1], "sigmoid"], adversary_model=[adv_input_size, "sigmoid"], epochs=50, alpha=epsilon)
+        #print(X_train[0])
     else:
         clf = basemodel_map[base_model] 
         constraint = fair_method_map[fairness](difference_bound=1.0 - epsilon)

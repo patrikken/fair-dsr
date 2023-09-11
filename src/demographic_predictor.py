@@ -7,7 +7,7 @@ from data_module import DataModelMissingSensitiveAtt
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers import NeptuneLogger
 import torch
-from datasets import get_old_adult, get_adult, get_acs_employment, get_compas, get_compas_race
+from datasets import get_datasets_tp
 
 
 parser = ArgumentParser()
@@ -21,6 +21,8 @@ parser.add_argument("--labeled_bs", type=int,
                     default=256, help="Number of labelled samples within batches")
 parser.add_argument("--num_epoch", type=int,
                     default=500, help="Number of epoch")
+parser.add_argument("--num_workers", type=int,
+                    default=0, help="Number of epoch")
 parser.add_argument("--use_consistency", action='store_true',
                     help="Enable consistency loss or no")
 parser.add_argument("--dataset", type=str, default='new_adult',
@@ -39,30 +41,25 @@ args = {
     "dataset": arg.dataset,
     "treshold_uncert": 0.3,
     "batch_size": arg.batch_size,
-    "consistency_w": arg.use_consistency
-}
-datasets = {
-    'adult': get_old_adult,
-    'new_adult': get_adult,
-    'compas_race': get_compas_race
+    "use_consistency": arg.use_consistency, 
+    "baseline":"OURS"
 }
 
+datasets = get_datasets_tp()
 
-def train_and_predict(data1, data2, data1_test, consistency_w=args["consistency_w"]):
+
+def train_and_predict(data1, data2, data1_test, use_consistency=args["use_consistency"]):
 
     data_module = DataModelMissingSensitiveAtt(
-        data1=data1, data2=data2, data1_test=data1_test, batch_size=args["batch_size"], val_size=.1, num_workers=4, include_y_in_x=False, labeled_bs=args["labeled_bs"])
+        data1=data1, data2=data2, data1_test=data1_test, batch_size=args["batch_size"], val_size=.1, num_workers=arg.num_workers, include_y_in_x=False, labeled_bs=args["labeled_bs"])
     # print(">>>", data_module.n_feature)
     demp = DemographicPredictor(
-        input_size=data_module.n_feature, output_size=1, lr=0.001, betas=(args["b1"], args["b2"]), ema_param=args["ema_param"], labelled_bs=args["labeled_bs"], total_epoch=args["num_epoch"], consistency_w=consistency_w, treshold_uncert=args["treshold_uncert"])
+        input_size=data_module.n_feature, output_size=1, lr=0.001, betas=(args["b1"], args["b2"]), ema_param=args["ema_param"], labelled_bs=args["labeled_bs"], total_epoch=args["num_epoch"], consistency_w=use_consistency, treshold_uncert=args["treshold_uncert"])
 
     # specify token and project to use NeptuneLogger set it to none
-    # neptune_logger = NeptuneLogger(
-    # api_token="",
-    # project=""
-    # )
-
     neptune_logger = None
+
+ 
     trainer = Trainer(devices=args["devices"],
                       accelerator=args["accelerator"], max_epochs=args["num_epoch"], logger=neptune_logger, fast_dev_run=args["fast_dev_run"])
     trainer.fit(demp, datamodule=data_module)
@@ -77,8 +74,8 @@ X, y, s = data1
 
 X_train, X_test, y_train, y_test, s_train, s_test = train_test_split(
     X, y, s, test_size=0.3)
+ 
 
 results = train_and_predict(data1=(X_train, y_train, s_train), data1_test=(
     X_test, y_test, s_test), data2=data2)
-
-print(results)
+ 

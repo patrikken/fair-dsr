@@ -10,7 +10,7 @@ import os
 import torch
 from torch import nn
 import numpy as np
-from datasets import get_old_adult, get_adult, get_compas_race
+from datasets import get_datasets_tp
 
 from metrics import equal_opportunity
 from helper import get_base_models
@@ -57,12 +57,6 @@ basemodel_keys = ['lr', 'gbm', 'rf', 'avd_debaising']
 basemodel_map = get_base_models(arg.dataset)
 
 
-datasets = {
-    'adult': get_old_adult,
-    'new_adult': get_adult,
-    'compas_race': get_compas_race
-}
-
 
 def train_test_split2(X, y, S, test_size=0.3):
     split_size = int(X.shape[0] * test_size)
@@ -88,6 +82,7 @@ class NN(nn.Module):
         x = self.network(x)
         return x
 
+datasets = get_datasets_tp()
 
 data1, _ = datasets[arg.dataset]()
 

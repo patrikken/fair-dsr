@@ -95,7 +95,7 @@ class TeacherModel(nn.Module):
     def predict_step(self, batch: tuple, batch_idx: int, dataloader_idx: int = 0):
         self.dropout.train()
         x, _, s = batch
-        pred = [self.dropout(self.model(x)) for _ in range(self.mc_iteration)]
+        pred = [self.dropout(self(x)) for _ in range(self.mc_iteration)]
         pred = torch.vstack(pred).mean(dim=0)
         return pred
 
@@ -131,11 +131,7 @@ class DemographicPredictor(LightningModule):
 
         self.treshold_uncert = treshold_uncert
 
-        self.teacher = TeacherModel(
-            self.student, ema_param, H=self.treshold_uncert)
-
-        self.lr = lr
-        self.consistency_w = 0
+        self.lr = lr 
         self.use_consitency = consistency_w
         self.loss = nn.BCEWithLogitsLoss()
         self.consitency_loss = nn.MSELoss()
@@ -150,6 +146,11 @@ class DemographicPredictor(LightningModule):
 
         self.uncert_scheduler = GaussianWarmpUp(total_epoch=total_epoch)
 
+        self.sigmoid = nn.Sigmoid()
+        
+        self.teacher = TeacherModel(
+            self.student, ema_param, H=self.treshold_uncert)
+
     def set_uncertainty_treshold(self, H):
         self.treshold_uncert = H
         self.teacher.H = H
@@ -158,11 +159,16 @@ class DemographicPredictor(LightningModule):
         x = self.student(x)
         return x.squeeze()
 
-    def predict(self, x):
-        # output = self.teacher(x)
-        output = self(x)
-        ans = torch.round(torch.sigmoid(output))
+    def predict(self, x, threshold=.5):
+        output = self.teacher(x)
+        #output = self(x)
+        sigmoid = self.sigmoid(output) 
+        ans = (sigmoid > threshold).long()
         return ans
+    
+    def predict_prob(self, x):
+        digits = self(x)
+        return self.sigmoid(digits)
 
     def training_step(self, batch, _):
         x, _, s = batch

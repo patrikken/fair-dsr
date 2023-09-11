@@ -1,19 +1,14 @@
-from argparse import ArgumentParser, Namespace
-from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.loggers import NeptuneLogger
+from pytorch_lightning import LightningModule
+from torch import nn
+from torch.optim import Adam, RMSprop
 import torch
-from torch import nn, cat
-from torch.optim import Adam
-import torch.nn.functional as F
-
 from torchmetrics import Accuracy
+ 
+import torch.nn.functional as F
+from metrics import DemParityMetric, EqualizedOdds, EqualOpportunity
+from DRO.robust_loss import RobustLoss
 
-from data_module import AdultDataModel, GermanDataModel
 
-from scipy.stats import entropy
-from metrics import DemParityMetric
-
-from predictor_s import DemographicPredictor
 
 
 class Classifier(LightningModule):
@@ -26,92 +21,120 @@ class Classifier(LightningModule):
             output_size: int. Output size. Default = 1
     """
 
-    def __init__(self, input_size=97, output_size=1, lr=.001, betas=None) -> None:
+    def __init__(self, input_size=97, output_size=1, lr=.001, betas=None, use_robust=False, robust_method='chi-square') -> None:
         super(Classifier, self).__init__()
 
-        self.model = nn.Sequential(
-            nn.Linear(input_size, 60),
-            nn.ReLU(),
-            nn.Dropout(.3),
-            nn.Linear(60, output_size) 
-        )
+        self.model = nn.Linear(input_size, output_size) 
+        #nn.Sequential(
+        #    nn.Linear(input_size, output_size), 
+            #nn.Linear(64, 32), 
+            #nn.Linear(32, output_size), 
+        #)
+
+ 
 
         self.lr = lr
+        self.robust_loss = RobustLoss(geometry=robust_method, size=1 if robust_method=='chi-square' else .9, reg=0.01)
+        self.loss = nn.BCEWithLogitsLoss() #reduction='none' if use_robust else 'mean'
 
-        self.loss = nn.BCEWithLogitsLoss()
-
-        self.train_acc = Accuracy(task="binary")
-        self.val_acc = Accuracy(task="binary")
-        self.test_acc = Accuracy(task="binary")
-        self.teacher_acc = Accuracy(task="binary")
+        self.train_acc = Accuracy(task="binary", multiclass=False)
+        self.val_acc = Accuracy(task="binary", multiclass=False)
+        self.test_acc = Accuracy(task="binary", multiclass=False) 
         self.dp = DemParityMetric()
+
         self.dp_test = DemParityMetric()
+        self.eo_test = EqualOpportunity()
+        self.eod_test = EqualizedOdds()
+
+
         self.dp_train = DemParityMetric()
 
-    def forward(self, x):
-        x = self.model(x)
-        return x.squeeze()
+        self.use_robust = use_robust
+        self.sigmoid = nn.Sigmoid()
 
-    def training_step(self, batch, _):
+    def forward(self, x):
+        x = self.model(x).squeeze()
+        sigmoid_output = self.sigmoid(x)
+        return x, sigmoid_output
+
+    def loss_fn(self, outputs, targets):
+        if not self.use_robust:
+            loss = self.loss(outputs, targets)
+        else: 
+            loss =  F.binary_cross_entropy_with_logits(outputs, targets, reduction='none')
+            self.log("acc/n_train", loss.mean())
+            loss = self.robust_loss(loss)
+            self.log("acc/r_loss", loss)
+        return loss
+
+
+    def training_step(self, batch, _): 
         x, y, s = batch
         # x, y, s = x.squeeze(), y.squeeze(), s.squeeze()
         # print(x.shape, s)
-        output = self(x)
+        output, sigmoid_output = self(x)
 
         #
 
-        loss = self.loss(output, y)
+        loss = self.loss_fn(output, y)
 
-        self.train_acc.update(output, y.long())
+        self.train_acc.update(sigmoid_output, y.long())
 
         self.log("acc/train", self.train_acc,
                  prog_bar=True, on_epoch=True, on_step=False)
         self.log("loss/train", loss)
 
-        self.dp_train.update(output, s)
+        self.dp_train.update(sigmoid_output, s)
         self.log("dp/train", self.dp_train, prog_bar=False,
                  on_epoch=True, on_step=False)
 
         return loss
 
-    """ def training_epoch_end(self, outputs) -> None:
-        # update teacher's paramaters with EMA
-        # for current_params, ema_params in zip(self.parameters(), self.teacher.parameters()):
-        # print(param1.shape, param2.shape)
-        #    ema_params.data = self.ema_param * current_params + \
-        #        (1 - self.ema_param) * ema_params
-        pass """
-
     def validation_step(self, batch, _):
+        #return
         x, y, s = batch
 
         # print(s)
-        output = self(x)
+        output, sigmoid_output = self(x)
 
-        loss = self.loss(output, y)
+        loss = self.loss_fn(output, y)
 
-        self.val_acc.update(output, y.long())
+        self.val_acc.update(sigmoid_output, y.long())
 
-        self.dp.update(output, s)
+        self.dp.update(sigmoid_output, s)
 
-        self.log("acc/val", self.val_acc, prog_bar=True, on_epoch=True)
-        self.log("loss/val", loss, prog_bar=True, on_epoch=True)
-        self.log("dp/val", self.dp, prog_bar=True, on_epoch=True)
+        #self.eo_test.update(sigmoid_output, y, s)
+        #self.eod_test.update(sigmoid_output, y, s)
+        #self.log("eo/val", self.eo_test)
+        #self.log("eod/val", self.eod_test)
+
+        self.log("acc/val", self.val_acc, prog_bar=True)
+        self.log("loss/val", loss, prog_bar=False)
+        self.log("dp/val", self.dp, prog_bar=False)
 
     def test_step(self, batch, _):
         x, y, s = batch
 
-        output = self(x)
+        _, sigmoid_output = self(x)
 
-        loss = self.loss(output, y)
+        #loss = self.loss(output, y)
 
-        self.test_acc.update(output, y.long())
-        self.dp_test.update(output, s)
+        self.test_acc.update(sigmoid_output, y.long())
+        self.dp_test.update(sigmoid_output, s)
+        self.eo_test.update(sigmoid_output, y, s)
+        self.eod_test.update(sigmoid_output, y, s)
 
-        self.log("acc/test", self.test_acc, on_epoch=True)
-        self.log("dp/test", self.dp_test, prog_bar=True, on_epoch=True)
+        self.log("acc/test", self.test_acc)
+        self.log("dp/test", self.dp_test)
+        self.log("eo/test", self.eo_test)
+        self.log("eod/test", self.eod_test)
         # self.log("test/loss", loss)
 
     def configure_optimizers(self):
         optim = Adam(self.model.parameters(), self.lr)
         return optim
+    
+    def predict(self, x): 
+        _, preds = self(x) 
+        ans = (preds > .5).long()
+        return ans

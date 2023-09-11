@@ -9,7 +9,7 @@ from fairlearn.reductions import ExponentiatedGradient, DemographicParity, False
 import torch
 from torch import nn
 import numpy as np
-from datasets import get_old_adult, get_adult, get_compas_race
+from datasets import get_datasets_tp
 
 from predictor_s import DemographicPredictor
 from metrics import equal_opportunity
@@ -77,15 +77,11 @@ epsilon_range = np.arange(0.701, 0.991, 0.004)
 base = [0.0, 0.05, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7]
 epsilon_range = base + list(epsilon_range) + [0.9999]
 epsilons = [round(x, 3) for x in epsilon_range]  # 300 values
-# epsilons = [0.0, 1.0]
+#epsilons = [0.0, 1.0]
 
 basemodel_map = get_base_models(arg.dataset, arg.seed)
 
-datasets = {
-    'adult': get_old_adult,
-    'new_adult': get_adult,
-    'compas_race': get_compas_race
-}
+datasets = get_datasets_tp()
 
 
 def train_test_split2(X, y, S, test_size=0.3):
@@ -104,25 +100,20 @@ def get_predicted_sensitive_attribute(X, y, return_Reliable_S=False):
     X = torch.from_numpy(X).float()
     y = torch.from_numpy(y).float()
 
+    input_size = X.shape[1]
     if arg.dataset == 'new_adult':
         pretrained_path = './pretrained/new_adult_consistency.ckpt'
         input_size = 51
         # add the target in the input to predict the sensitive attrbutes
-        # X = torch.hstack([X, y.float().unsqueeze(1)])
-    elif arg.dataset == 'acs_employment':
-        pretrained_path = './pretrained/acs_employment.ckpt'
-        input_size = 51
-        # add the target in the input to predict the sensitive attrbutes
-        X = torch.hstack([X, y.float().unsqueeze(1)])
+        # X = torch.hstack([X, y.float().unsqueeze(1)]) 
     elif arg.dataset == "compas":
-        pretrained_path = './pretrained/compas_race.ckpt'
-        input_size = X.shape[1]
-    elif arg.dataset == "compas_race":
-        if arg.demographic_predictor == "DNN":
-            pretrained_path = './pretrained/compas_race_no_consistency.ckpt'
-        else:
-            pretrained_path = './pretrained/compas_race.ckpt'
-        input_size = X.shape[1]
+        pretrained_path = './pretrained/compas_race.ckpt' 
+    elif arg.dataset == "lsac":
+        pretrained_path = './pretrained/lsac_race.ckpt' 
+    elif arg.dataset == "compas_race": 
+        pretrained_path = './pretrained/compas_race.ckpt'  
+    elif arg.dataset == "lsac_sex":
+        pretrained_path = './pretrained/lsac_sex.ckpt' 
     else:
         pretrained_path = './pretrained/adult_pretrained_demographic.ckpt'
         input_size = 96

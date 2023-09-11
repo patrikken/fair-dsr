@@ -223,7 +223,6 @@ def get_acs_employment(states=None, resample=False):
 
 
 def get_old_adult(include_y_in_x=False, base_dir="./"):
-    #
     def get_data(df, include_y_in_x=include_y_in_x):
         if 'gender_ Male' in df.columns:
             S = df['gender_ Male'].values
@@ -245,6 +244,57 @@ def get_old_adult(include_y_in_x=False, base_dir="./"):
     return get_data(data1), get_data(data2)
 
 
+def get_lsac(include_y_in_x=False, base_dir="./"):
+    """
+    LSAC dataset
+    """
+    s = 'race_Black'
+    target = 'pass_bar_Passed'
+    def get_data(df, include_y_in_x=include_y_in_x):
+        if s in df.columns:
+            S = df[s].values
+            X = df.drop(s, axis=1)
+        if not include_y_in_x:
+            X = df.drop([target, s], axis=1).values
+        else:
+            X = df.values
+            
+        y = df[target].values
+
+        return X, y, S
+
+    data1 = pd.read_csv(
+        '{}preprocessing/lsac.data1.csv'.format(base_dir), index_col=False)
+    data2 = pd.read_csv(
+        '{}preprocessing/lsac.data2.csv'.format(base_dir), index_col=False)
+    data1 = data1.sample(frac=1) # shuffle
+    data2 = data2.sample(frac=1) # shuffle
+    return get_data(data1), get_data(data2)
+
+def get_lsac_sex(include_y_in_x=False, base_dir="./"):
+    #
+    s = 'sex_Male'
+    target = 'pass_bar_Passed'
+    def get_data(df, include_y_in_x=include_y_in_x):
+        if s in df.columns:
+            S = df[s].values
+            X = df.drop(s, axis=1)
+        if not include_y_in_x:
+            X = df.drop([target, s], axis=1).values
+        else:
+            X = df.values
+            
+        y = df[target].values
+
+        return X, y, S
+
+    data1 = pd.read_csv(
+        '{}preprocessing/lsac.data1.csv'.format(base_dir), index_col=False)
+    data2 = pd.read_csv(
+        '{}preprocessing/lsac.data2.csv'.format(base_dir), index_col=False)
+    data1 = data1.sample(frac=1) # shuffle
+    return get_data(data1), get_data(data2)
+
 def get_compas_race(base_dir="./"):
 
     return get_compas(sensitive_attrib="African_American", base_dir=base_dir)
@@ -263,3 +313,43 @@ def get_compas(sensitive_attrib="Female", base_dir="./"):
     return (X_d1, y_d1, s_d1), (X_d2, y_d2, s_d2)
 
  
+
+def get_celeba(sensitive_attrib="Male", base_dir="./", target='Smiling'):
+    """
+     Load the celebA dataset
+    """
+    data1 = pd.read_csv(
+        '{}preprocessing/celeba.data1.csv'.format(base_dir), index_col=False)
+    
+    data2 = pd.read_csv(
+        '{}preprocessing/celeba.data2.csv'.format(base_dir), index_col=False)
+    
+    def process(df): 
+        X = df.loc[:, df.columns != target]
+        y = df[target].values
+
+        s = X[sensitive_attrib].values
+        X = X.drop(sensitive_attrib, axis=1)
+
+        norms = np.linalg.norm(X, axis=1)
+        X[norms>2] *= 6 / norms[norms>6][:,None]
+        s[s==-1] = 0
+        y[y==-1] = 0
+        return X.values, y, s
+
+    return process(data1), process(data2) 
+
+def get_celeba_attrac():
+    return get_celeba(sensitive_attrib='Male', target='Attractive')
+
+def get_datasets_tp():
+    datasets = {
+    'adult': get_old_adult,
+    'new_adult': get_adult,
+    'compas_race': get_compas_race,
+    'lsac': get_lsac,
+    'lsac_sex':get_lsac_sex,
+    'celeba': get_celeba
+    }
+
+    return datasets

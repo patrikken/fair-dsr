@@ -3,14 +3,15 @@ from pytorch_lightning import LightningDataModule
 import pandas as pd
 import torch
 from torch.utils.data import random_split, DataLoader
-from utils import CustomSampler, DistributedBatchSampler
+from utils import CustomSampler, DistributedBatchSampler 
 
 from torch.utils.data.sampler import BatchSampler
-
+from sklearn.model_selection import train_test_split
 from utils import DatasetLoader, train_test_split2
 
 import numpy as np
 from sklearn.metrics import accuracy_score
+from fair_batch.fair_batch_sample import FairBatch
 
  
 from datasets import get_old_adult, get_adult
@@ -29,9 +30,11 @@ class BaseDataModule(LightningDataModule):
 
     Params:
         include_y_in_x: bool. When true adds the target to the input feature space
+        data: tuple, (X,y,s) training features, target variable and sensitive attributes respectively
+        test_data: tuple, (X,y,s) test features, target variable and sensitive attributes respectively
     """
 
-    def __init__(self, csv_path, n_features, batch_size, num_workers=4, include_y_in_x=True, model=None):
+    def __init__(self, train_data, test_data, n_features, batch_size, num_workers=4, include_y_in_x=False, model=None, use_fair_batch=False, fair_batch_params={}, use_validation=True, seed=1):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -44,35 +47,64 @@ class BaseDataModule(LightningDataModule):
 
         self.model = model
 
+        self.data_train = train_data
+        self.data_test = test_data
+        self.fair_batch_params = fair_batch_params
+
         if self.include_y_in_x is True:
             self.n_feature += 1
 
-        self.seed = 42
+        self.use_fair_batch = use_fair_batch
+
+        self.seed = seed
+        self.use_validation = use_validation
 
     def prepare_data(self):
         return
 
     def get_data(self):
-        return None, None, None
+        return self.train_data
 
-    def setup(self, stage):
-        X, y, S = self.get_data()
-        X_train, X_test, y_train, y_test, S_train, S_test = train_test_split2(
-            X, y, S, test_size=0.3)
-
-        train_dataset = DatasetLoader(
-            X_train, y_train.long(), S_train.long(), transform=None)
-
-        # use 20% of training data for validation
-        train_set_size = int(len(train_dataset) * 0.8)
-        valid_set_size = len(train_dataset) - train_set_size
-
-        # split the train set into two
-        self.train_data, self.val_data = random_split(
-            train_dataset, [train_set_size, valid_set_size], generator=self.seed)
-
+    def setup(self, stage):  
+        def converter_to_tensor(data):
+            X, y, S = data
+            return torch.from_numpy(X), torch.from_numpy(y), torch.from_numpy(S)
+        
+        #if stage == 'test' or stage is None:
+        X_test, y_test, S_test = converter_to_tensor(self.data_test)
         self.test_data = DatasetLoader(
             X_test, y_test.long(), S_test.long(), transform=None)
+        
+        if stage == 'fit' or stage is None:
+            X_train, y_train, S_train = converter_to_tensor(self.data_train)
+
+            if self.use_validation:
+                # use 20% of training data for validation 
+                X_train, X_val, y_train, y_val, S_train, S_val = train_test_split(
+                    X_train, y_train, S_train, test_size=0.2) 
+    
+                self.train_data = DatasetLoader(
+                    X_train, y_train.long(), S_train.long(), transform=None)
+                
+                self.val_data = DatasetLoader(
+                    X_val, y_val.long(), S_val.long(), transform=None)
+            else:
+                self.train_data = DatasetLoader(
+                    X_train, y_train.long(), S_train.long(), transform=None)
+            
+            if self.use_fair_batch is True:
+                y_train[y_train == 0] = -1 
+                fair_batch_params = {
+                    "target_fairness": 'dp',
+                    "replacement": False,
+                    "seed": 200,
+                    "alpha": 0.005
+                }
+                fair_batch_params.update(self.fair_batch_params)
+                print("fair_batch_params = {}".format(fair_batch_params))
+                self.sampler = FairBatch(self.model, X_train.float(),  y_train.float(),  S_train, batch_size=self.batch_size,
+                                     **fair_batch_params)
+        
 
     def test_dataloader(self):
         return DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
@@ -85,7 +117,9 @@ class BaseDataModule(LightningDataModule):
         return DataLoader(self.train_data, num_workers=self.num_workers, batch_sampler=self.sampler, pin_memory=True, worker_init_fn=worker_init_fn)
 
     def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        if self.use_validation:
+            return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return None
  
 class DataModelMissingSensitiveAtt(BaseDataModule):
     """
@@ -96,7 +130,7 @@ class DataModelMissingSensitiveAtt(BaseDataModule):
     """
 
     def __init__(self, data1, data2, data1_test, val_size=0, batch_size=128, num_workers=4, include_y_in_x=True, model=None, labeled_bs=64):
-        super().__init__(csv_path="", batch_size=batch_size,
+        super().__init__(train_data=None, test_data=None, batch_size=batch_size,
                          num_workers=num_workers, include_y_in_x=include_y_in_x, model=model, n_features=96)
 
         assert batch_size > labeled_bs
@@ -120,8 +154,10 @@ class DataModelMissingSensitiveAtt(BaseDataModule):
         X_d2, y_d2, S_d2 = converter_to_tensor(self.data2)
         X_test, y_test, S_test = converter_to_tensor(self.data1_test)
         S_d1[True] = torch.tensor(-1.0)
-        X = torch.vstack((X_d2, X_d1))
-        print(">>>", X.shape, X_d2.shape, X_d1.shape)
+
+        # append the dataset with missing sensitive attribute.  
+        X = torch.vstack((X_d2, X_d1)) 
+
         y = torch.vstack((y_d2.unsqueeze(dim=1), y_d1.unsqueeze(dim=1)))
         s = torch.vstack((S_d2.unsqueeze(dim=1), S_d1.unsqueeze(dim=1)))
 
