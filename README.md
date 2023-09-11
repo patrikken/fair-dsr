@@ -98,7 +98,7 @@ For this experiment, use the file [src/Ablation_Proxy_Evaluation.py](src/Ablatio
 
 
 
-## Citation 
+## Reference 
 
 ```
 @article{kenfack2023fairness,
