@@ -82,13 +82,14 @@ ACSIncome_categories = {
 }
 
 
-def get_acs_pums(dataset, name, states=None,  resample=False):
-    data_path = 'data/sampled_{}.csv'.format(name)
+def get_acs_pums(dataset, name, states=None, resample=False):
+    data_path = "data/sampled_{}.csv".format(name)
 
     def resample_():
         data_source = ACSDataSource(
-            survey_year='2018', horizon='1-Year', survey='person')
-        ca_data = data_source.get_data(states=states,  download=True)
+            survey_year="2018", horizon="1-Year", survey="person"
+        )
+        ca_data = data_source.get_data(states=states, download=True)
 
         # ca_features, ca_labels, _ = ACSIncome.df_to_pandas(
         #    ca_data, categories=ACSIncome_categories, dummies=True)
@@ -103,13 +104,14 @@ def get_acs_pums(dataset, name, states=None,  resample=False):
         ca_data = pd.read_csv(data_path, index_col=False)
 
 
-def get_adult(rseed=0, states=None, sensitive_attrib='', resample=False, base_dir="./"):
-    data_path = '{}data/sampled_new_adult.csv'.format(base_dir)
+def get_adult(rseed=0, states=None, sensitive_attrib="", resample=False, base_dir="./"):
+    data_path = "{}data/sampled_new_adult.csv".format(base_dir)
 
     def resample_newadult():
         data_source = ACSDataSource(
-            survey_year='2018', horizon='1-Year', survey='person')
-        ca_data = data_source.get_data(states=states,  download=True)
+            survey_year="2018", horizon="1-Year", survey="person"
+        )
+        ca_data = data_source.get_data(states=states, download=True)
 
         # ca_features, ca_labels, _ = ACSIncome.df_to_pandas(
         #    ca_data, categories=ACSIncome_categories, dummies=True)
@@ -117,22 +119,23 @@ def get_adult(rseed=0, states=None, sensitive_attrib='', resample=False, base_di
         print(len(ca_data))
         ca_data.to_csv(data_path, index=False)
         return ca_data
+
     ACSEmployment = BasicProblem(
         features=[
-            'AGEP',
-            'COW',
-            'SCHL',
-            'MAR',
-            'OCCP',
-            'POBP',
-            'RELP',
-            'WKHP',
+            "AGEP",
+            "COW",
+            "SCHL",
+            "MAR",
+            "OCCP",
+            "POBP",
+            "RELP",
+            "WKHP",
             # 'SEX',
-            'RAC1P',
+            "RAC1P",
         ],
-        target='PINCP',
+        target="PINCP",
         target_transform=lambda x: x > 50000,
-        group='SEX',
+        group="SEX",
         preprocess=adult_filter,
         postprocess=lambda x: np.nan_to_num(x, -1),
     )
@@ -140,116 +143,122 @@ def get_adult(rseed=0, states=None, sensitive_attrib='', resample=False, base_di
         ca_data = resample_newadult()
     else:
         ca_data = pd.read_csv(data_path, index_col=False)
-        
+
     X, y, s = ACSEmployment.df_to_pandas(
-        ca_data, categories=ACSIncome_categories, dummies=True)
-    s[s == 2] = 0 
+        ca_data, categories=ACSIncome_categories, dummies=True
+    )
+    s[s == 2] = 0
     y = np.squeeze(y)
     s = np.squeeze(s)
     X = X.values
- 
 
     X_d1, X_d2, y_d1, y_d2, s_d1, s_d2 = train_test_split(
-        X, y, s, test_size=0.2, random_state=1, stratify=y)
+        X, y, s, test_size=0.2, random_state=1, stratify=y
+    )
 
     scaler1 = StandardScaler()
     X_d1 = scaler1.fit_transform(X_d1)
     scaler2 = StandardScaler()
     X_d2 = scaler2.fit_transform(X_d2)
- 
+
     return (X_d1, y_d1.values, s_d1.values), (X_d2, y_d2.values, s_d2.values)
 
 
 def get_acs_employment(states=None, resample=False):
     ACSEmployment = BasicProblem(
         features=[
-            'AGEP',
-            'SCHL',
-            'MAR',
-            'RELP',
-            'DIS',
-            'ESP',
-            'CIT',
-            'MIG',
-            'MIL',
-            'ANC',
-            'NATIVITY',
-            'DEAR',
-            'DEYE',
-            'DREM',
+            "AGEP",
+            "SCHL",
+            "MAR",
+            "RELP",
+            "DIS",
+            "ESP",
+            "CIT",
+            "MIG",
+            "MIL",
+            "ANC",
+            "NATIVITY",
+            "DEAR",
+            "DEYE",
+            "DREM",
             # 'SEX',
-            'RAC1P',
+            "RAC1P",
         ],
-        target='ESR',
+        target="ESR",
         target_transform=lambda x: x == 1,
-        group='SEX',
+        group="SEX",
         preprocess=lambda x: x,
         postprocess=lambda x: np.nan_to_num(x, -1),
     )
-    data_path = 'data/sampled_ac_employment.csv'
+    data_path = "data/sampled_ac_employment.csv"
 
     def resample_():
         data_source = ACSDataSource(
-            survey_year='2018', horizon='1-Year', survey='person')
-        ca_data = data_source.get_data(states=states,  download=True)
- 
+            survey_year="2018", horizon="1-Year", survey="person"
+        )
+        ca_data = data_source.get_data(states=states, download=True)
+
         ca_data = ca_data.sample(n=130000, random_state=1)
         print(len(ca_data))
         ca_data.to_csv(data_path, index=False)
         return ca_data
+
     if resample or os.path.isfile(data_path) is False:
         ca_data = resample_()
     else:
         ca_data = pd.read_csv(data_path, index_col=False)
     X, y, s = ACSEmployment.df_to_pandas(
-        ca_data, categories=ACSIncome_categories, dummies=True)
+        ca_data, categories=ACSIncome_categories, dummies=True
+    )
     s[s == 2] = 0
-    y = y * 1 
+    y = y * 1
 
     y = np.squeeze(y)
     s = np.squeeze(s)
     X = X.values
- 
 
     X_d1, X_d2, y_d1, y_d2, s_d1, s_d2 = train_test_split(
-        X, y, s, test_size=0.2, random_state=1, stratify=y)
+        X, y, s, test_size=0.2, random_state=1, stratify=y
+    )
 
     scaler1 = StandardScaler()
     X_d1 = scaler1.fit_transform(X_d1)
     scaler2 = StandardScaler()
     X_d2 = scaler2.fit_transform(X_d2)
- 
+
     return (X_d1, y_d1.values, s_d1.values), (X_d2, y_d2.values, s_d2.values)
 
 
 def get_old_adult(include_y_in_x=False, base_dir="./"):
+    #
     def get_data(df, include_y_in_x=include_y_in_x):
-        if 'gender_ Male' in df.columns:
-            S = df['gender_ Male'].values
-            X = df.drop('gender_ Male', axis=1)
+        if "gender_ Male" in df.columns:
+            S = df["gender_ Male"].values
+            X = df.drop("gender_ Male", axis=1)
         if not include_y_in_x:
-            X = df.drop(['outcome_ >50K', 'gender_ Male'], axis=1).values
+            X = df.drop(["outcome_ >50K", "gender_ Male"], axis=1).values
         else:
             X = df.values
-            
-        y = df['outcome_ >50K'].values
+
+        y = df["outcome_ >50K"].values
 
         return X, y, S
 
     data1 = pd.read_csv(
-        '{}preprocessing/adult.data1.csv'.format(base_dir), index_col=False)
+        "{}preprocessing/adult.data1.csv".format(base_dir), index_col=False
+    )
     data2 = pd.read_csv(
-        '{}preprocessing/adult.data2.csv'.format(base_dir), index_col=False)
+        "{}preprocessing/adult.data2.csv".format(base_dir), index_col=False
+    )
     data1 = data1.sample(frac=1)
     return get_data(data1), get_data(data2)
 
 
 def get_lsac(include_y_in_x=False, base_dir="./"):
-    """
-    LSAC dataset
-    """
-    s = 'race_Black'
-    target = 'pass_bar_Passed'
+    #
+    s = "race_Black"
+    target = "pass_bar_Passed"
+
     def get_data(df, include_y_in_x=include_y_in_x):
         if s in df.columns:
             S = df[s].values
@@ -258,23 +267,27 @@ def get_lsac(include_y_in_x=False, base_dir="./"):
             X = df.drop([target, s], axis=1).values
         else:
             X = df.values
-            
+
         y = df[target].values
 
         return X, y, S
 
     data1 = pd.read_csv(
-        '{}preprocessing/lsac.data1.csv'.format(base_dir), index_col=False)
+        "{}preprocessing/lsac.data1.csv".format(base_dir), index_col=False
+    )
     data2 = pd.read_csv(
-        '{}preprocessing/lsac.data2.csv'.format(base_dir), index_col=False)
-    data1 = data1.sample(frac=1) # shuffle
-    data2 = data2.sample(frac=1) # shuffle
+        "{}preprocessing/lsac.data2.csv".format(base_dir), index_col=False
+    )
+    data1 = data1.sample(frac=1)  # shuffle
+    data2 = data2.sample(frac=1)  # shuffle
     return get_data(data1), get_data(data2)
+
 
 def get_lsac_sex(include_y_in_x=False, base_dir="./"):
     #
-    s = 'sex_Male'
-    target = 'pass_bar_Passed'
+    s = "sex_Male"
+    target = "pass_bar_Passed"
+
     def get_data(df, include_y_in_x=include_y_in_x):
         if s in df.columns:
             S = df[s].values
@@ -283,20 +296,22 @@ def get_lsac_sex(include_y_in_x=False, base_dir="./"):
             X = df.drop([target, s], axis=1).values
         else:
             X = df.values
-            
+
         y = df[target].values
 
         return X, y, S
 
     data1 = pd.read_csv(
-        '{}preprocessing/lsac.data1.csv'.format(base_dir), index_col=False)
+        "{}preprocessing/lsac.data1.csv".format(base_dir), index_col=False
+    )
     data2 = pd.read_csv(
-        '{}preprocessing/lsac.data2.csv'.format(base_dir), index_col=False)
-    data1 = data1.sample(frac=1) # shuffle
+        "{}preprocessing/lsac.data2.csv".format(base_dir), index_col=False
+    )
+    data1 = data1.sample(frac=1)  # shuffle
     return get_data(data1), get_data(data2)
 
-def get_compas_race(base_dir="./"):
 
+def get_compas_race(base_dir="./"):
     return get_compas(sensitive_attrib="African_American", base_dir=base_dir)
 
 
@@ -308,23 +323,28 @@ def get_compas(sensitive_attrib="Female", base_dir="./"):
     s = data[sensitive_attrib].values
 
     X_d1, X_d2, y_d1, y_d2, s_d1, s_d2 = train_test_split(
-        X, y, s, test_size=0.20, random_state=1)
+        X, y, s, test_size=0.20, random_state=1
+    )
 
     return (X_d1, y_d1, s_d1), (X_d2, y_d2, s_d2)
 
- 
 
-def get_celeba(sensitive_attrib="Male", base_dir="./", target='Smiling'):
-    """
-     Load the celebA dataset
-    """
+def get_celeba_attract(sensitive_attrib="Male", base_dir="./", target="Attractive"):
+    return get_celeba(
+        target=target, sensitive_attrib=sensitive_attrib, base_dir=base_dir
+    )
+
+
+def get_celeba(sensitive_attrib="Male", base_dir="./", target="Smiling"):
     data1 = pd.read_csv(
-        '{}preprocessing/celeba.data1.csv'.format(base_dir), index_col=False)
-    
+        "{}preprocessing/celeba.data1.csv".format(base_dir), index_col=False
+    )
+
     data2 = pd.read_csv(
-        '{}preprocessing/celeba.data2.csv'.format(base_dir), index_col=False)
-    
-    def process(df): 
+        "{}preprocessing/celeba.data2.csv".format(base_dir), index_col=False
+    )
+
+    def process(df):
         X = df.loc[:, df.columns != target]
         y = df[target].values
 
@@ -332,24 +352,26 @@ def get_celeba(sensitive_attrib="Male", base_dir="./", target='Smiling'):
         X = X.drop(sensitive_attrib, axis=1)
 
         norms = np.linalg.norm(X, axis=1)
-        X[norms>2] *= 6 / norms[norms>6][:,None]
-        s[s==-1] = 0
-        y[y==-1] = 0
+        X[norms > 2] *= 6 / norms[norms > 6][:, None]
+        s[s == -1] = 0
+        y[y == -1] = 0
         return X.values, y, s
 
-    return process(data1), process(data2) 
+    return process(data1), process(data2)
+
 
 def get_celeba_attrac():
-    return get_celeba(sensitive_attrib='Male', target='Attractive')
+    return get_celeba(sensitive_attrib="Male", target="Attractive")
+
 
 def get_datasets_tp():
     datasets = {
-    'adult': get_old_adult,
-    'new_adult': get_adult,
-    'compas_race': get_compas_race,
-    'lsac': get_lsac,
-    'lsac_sex':get_lsac_sex,
-    'celeba': get_celeba
+        "adult": get_old_adult,
+        "new_adult": get_adult,
+        "compas_race": get_compas_race,
+        "lsac": get_lsac,
+        "lsac_sex": get_lsac_sex,
+        "celeba_attract": get_celeba_attract,
     }
 
     return datasets

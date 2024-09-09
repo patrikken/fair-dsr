@@ -18,3 +18,4 @@ scikit-learn==1.2.2
 fairlearn
 mpi4py
 folktables
+mapie

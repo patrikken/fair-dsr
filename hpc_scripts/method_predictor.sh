@@ -11,7 +11,7 @@ base_models=(lr rf gbm)
 sensitive_ft_types=(predicted clean)
 fair_metrics=(dp eodds eop)
 demographic_predictors=(DNN KNN) 
-
+method=predicted # other values ours, clean
  
 for fair_metric in "${fair_metrics[@]}" 
 do	    
