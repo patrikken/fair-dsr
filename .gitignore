@@ -13,6 +13,7 @@ outputs/
 analysis/results/adult/pareto
 analysis/results
 models/data
+pretrained/
 core.*
 # Distribution / packaging
 .Python

@@ -1,7 +1,7 @@
 
 # Fairness Under Demographic Scarce Regime
 
-This repository contains the code for the paper Fairness Under Demographic Scarce Regime (FairDSR). Demographic Scarce Regime refers to settings where demographic information (sensitive attribute) is not *fully* available.  The paper studies the properties of the sensitive attribute classifier that can affect the fairness-accuracy tradeoffs of the downstream classifier. The paper demonstrates that applying fairness constraints on samples with a lower uncertainty in the sensitive attributes provides better results in terms of fairness-accuracy tradeoffs. 
+This repository contains the code for the paper [Fairness Under Demographic Scarce Regime (FairDSR)](https://openreview.net/forum?id=TB18G0w6Ld). Demographic Scarce Regime refers to settings where demographic information (sensitive attribute) is not *fully* available.  The paper studies the properties of the sensitive attribute classifier that can affect the fairness-accuracy tradeoffs of the downstream classifier. The paper demonstrates that applying fairness constraints on samples with a lower uncertainty in the sensitive attributes provides better results in terms of fairness-accuracy tradeoffs. 
 
 ## Requirements
 The project requires the following Python packages:
